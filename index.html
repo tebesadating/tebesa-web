@@ -2972,5 +2972,72 @@ function updateHomeName(){
   <div class="relative w-full max-w-sm rounded-3xl bg-[#211a22] border border-white/10 p-6 shadow-2xl"><div class="w-12 h-12 rounded-2xl bg-rose/15 text-rose flex items-center justify-center text-xl mb-4"><i class="fa-solid fa-heart-crack"></i></div><h2 class="font-serif text-2xl mb-2">Unmatch this person?</h2><p id="person-unmatch-message" class="text-sm text-cream/60 leading-relaxed mb-6">You will no longer be matched with this person.</p><div class="grid grid-cols-2 gap-3"><button onclick="closeUnmatchConfirm()" class="rounded-xl py-3 bg-white/5 border border-white/10 font-semibold">Cancel</button><button onclick="confirmPersonUnmatch()" class="rounded-xl py-3 bg-rose text-white font-bold">Unmatch</button></div></div>
 </div>
 
+
+<!-- TEMPORARY TEBESA DISCOVER TEST -->
+<div id="tebesa-discover-test" style="display:none;position:fixed;inset:10%;z-index:99999;background:#fff;color:#222;padding:20px;border-radius:12px;overflow:auto;font:16px Arial,sans-serif">
+  <h2>Discover Connection Test</h2>
+  <p id="tebesa-test-status">Ready to test.</p>
+  <button id="tebesa-test-run" type="button">Test Discover</button>
+  <button type="button" onclick="document.getElementById('tebesa-discover-test').style.display='none'">Close</button>
+  <pre id="tebesa-test-result" style="white-space:pre-wrap"></pre>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('tebesa-discover-test');
+  var button = document.getElementById('tebesa-test-run');
+  if (!box || !button) return;
+
+  window.tebesaOpenDiscoverTest = function () {
+    box.style.display = 'block';
+  };
+
+  button.addEventListener('click', async function () {
+    var status = document.getElementById('tebesa-test-status');
+    var result = document.getElementById('tebesa-test-result');
+    button.disabled = true;
+    result.textContent = '';
+    status.textContent = 'Testing connection…';
+
+    try {
+      var initData = window.Telegram &&
+        window.Telegram.WebApp &&
+        window.Telegram.WebApp.initData;
+
+      if (!initData) {
+        throw new Error('Open Tebesa inside Telegram to run this test.');
+      }
+
+      var response = await fetch(
+        'https://wisemrodjophhzcnkmst.supabase.co/functions/v1/tebesa-discover',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'sb_publishable_lfGEMbXwTAxXBTATVFnFxA_SItmRBs2',
+            'Authorization': 'Bearer sb_publishable_lfGEMbXwTAxXBTATVFnFxA_SItmRBs2'
+          },
+          body: JSON.stringify({
+            action: 'discover',
+            initData: initData
+          })
+        }
+      );
+
+      var data = await response.json();
+      status.textContent = response.ok
+        ? 'Request completed.'
+        : 'Request failed (' + response.status + ').';
+      result.textContent = JSON.stringify(data, null, 2);
+    } catch (error) {
+      status.textContent = 'Test could not complete.';
+      result.textContent = error.message || String(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+<!-- END TEMPORARY TEBESA DISCOVER TEST -->
+
 </body>
 </html>
