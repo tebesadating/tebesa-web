@@ -2577,6 +2577,7 @@ function compressDataUrl(url, max){
   });
 }
 let _saving = false;
+let serverReady = false;   // true once the server is known to have this user's profile row
 async function saveProfileToServer(){
   if(!tgInitData()){
     showToast('No Telegram login data. Open the app from the bot Menu button or Mini App link.');
@@ -2592,6 +2593,7 @@ async function saveProfileToServer(){
       goal: state.goal, religion: state.religion, photos,
       selectedInterests: Array.from(state.selectedInterests), user: state.user
     }});
+    serverReady = true;
     if(Array.isArray(out.photos)){ state.photos = out.photos; saveTebesaProfileLocally(); }
     if(out.completion){ state.completion = out.completion; renderCompletion(); }
     loadTopPicks();   // eligibility / preferences may have changed
@@ -2609,6 +2611,7 @@ async function loadProfileFromServer(){
     const out = await tebesaApi({action:'get'});
     if(out.unavailable){ showToast('Your account is not available. Contact support.'); return false; }
     if(!out.exists) return false;
+    serverReady = true;
     const s = out.profile;
     state.language = s.language || state.language || (window.TEBESA_I18N&&window.TEBESA_I18N.stored()) || ''; state.gender = canonGenderClient(s.gender); state.interest = canonInterestClient(s.interest);
     state.goal = s.goal; state.religion = s.religion;
@@ -2624,7 +2627,8 @@ function finishApp(){
   endSplash();
   if(window.TEBESA_I18N){ const I=window.TEBESA_I18N; const lang=I.canonical(state.language)||I.stored()||'English'; state.language=lang; I.setLanguage(lang); }
   saveTebesaProfileLocally();
-  saveProfileToServer();
+  // New / locally-restored profile: the server row must exist BEFORE we call discover, inbox, etc.
+  const _ready = serverReady ? (saveProfileToServer(), Promise.resolve(true)) : saveProfileToServer();
   updateHomeName();
   $('onboarding-flow').classList.add('hidden');
   $('main-app').classList.remove('hidden');
@@ -2634,11 +2638,8 @@ function finishApp(){
   $('profile-location').textContent=(state.user.city?state.user.city+', ':'')+(state.user.country||'Ethiopia');
   $('profile-bio').textContent=state.user.bio||'Add a little about yourself.';
   renderProfileInterests();
-  loadDiscover();
-  loadTopPicks();
   renderCompletion();
-  refreshInbox();
-  refreshLikes();
+  _ready.then(()=>{ if(!serverReady) return; loadDiscover(); loadTopPicks(); refreshInbox(); refreshLikes(); });
   $('profile-image').src=state.photos[0]||$('preview-main-img').src;
   $('home-avatar').src=state.photos[0]||$('preview-main-img').src;
   navigate('home');
@@ -3092,7 +3093,7 @@ async function loadHistory(id){
 }
 
 async function refreshInbox(){
-  if(!tgInitData()) return;
+  if(!tgInitData() || !serverReady) return;
   try{
     const [m,i] = await Promise.all([tebesaApi({action:'matches'},TEBESA_APP_FN), chatApi({action:'inbox'})]);
     matchList = m.matches||[]; inboxMeta = i.threads||{}; totalUnread = i.unread||0;
@@ -3156,7 +3157,7 @@ function renderMatchesTab(){
   });
 }
 // keep inbox fresh while the person is looking at it
-inboxTimer=setInterval(()=>{ if(!document.hidden && ['home','matches','inbox'].includes(state.currentView)) refreshInbox(); },15000);
+inboxTimer=setInterval(()=>{ if(!document.hidden && serverReady && ['home','matches','inbox'].includes(state.currentView)) refreshInbox(); },15000);
 
 /* ---- Chat screen ---- */
 
