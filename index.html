@@ -8,6 +8,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;0,700;0,900;1,500&family=Manrope:wght@200..800&family=Noto+Sans+Ethiopic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <meta name="theme-color" content="#FFFFFF">
 <script>(function(){document.documentElement.classList.add('splash-active');var t='dark';try{t=localStorage.getItem('tebesa-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');})();</script>
+<script>
+/* Startup watchdog: if the white splash is still showing after 12 s, say what went wrong instead of a blank screen. */
+(function(){
+  var errs=[];
+  window.addEventListener('error',function(e){errs.push(String(e.message||'error'));});
+  window.addEventListener('unhandledrejection',function(e){errs.push(String((e.reason&&e.reason.message)||e.reason||'rejected'));});
+  setTimeout(function(){
+    var de=document.documentElement;
+    if(!de.classList.contains('splash-active')) return;
+    var d=document.createElement('div');
+    d.setAttribute('style','position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#fff;color:#222;font:15px/1.5 system-ui,sans-serif;padding:28px;overflow:auto');
+    var h=document.createElement('h2'); h.setAttribute('style','margin:0 0 12px'); h.textContent='Tebesa could not start'; d.appendChild(h);
+    var p=document.createElement('p');
+    p.textContent='Internet: '+(navigator.onLine?'connected':'offline')+' | Styles: '+(typeof tailwind!=='undefined'||document.querySelector('link[href*="vendor/tailwind.css"]')?'ok':'missing')+' | Errors: '+(errs.length?errs.slice(-3).join(' ; '):'none');
+    d.appendChild(p);
+    function btn(t,f){var b=document.createElement('button');b.textContent=t;b.setAttribute('style','display:block;width:100%;margin:12px 0;padding:14px;border:0;border-radius:12px;background:#ff5c8a;color:#fff;font:600 16px system-ui,sans-serif');b.onclick=f;d.appendChild(b);}
+    btn('Try again',function(){location.reload();});
+    btn('Reset login and try again',function(){try{localStorage.removeItem('tebesa-app-login');localStorage.removeItem('tebesa-login-pending');}catch(e){}location.reload();});
+    de.appendChild(d);
+  },12000);
+})();
+</script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>/* Splash is permanently white: also paint Telegram's own header / background / bottom bar white until the splash ends (restored by endSplash()). */
 (function(){try{var w=window.Telegram&&Telegram.WebApp;if(!w)return;window.__tgChrome={h:w.headerColor,b:w.backgroundColor,bb:w.bottomBarColor};
@@ -664,6 +686,13 @@ label,.section-label{overflow-wrap:anywhere;line-height:1.3}
   </g>
 
 </svg>
+  </div>
+
+  <div id="login-screen" class="hidden h-full w-full flex-col justify-center items-center premium-bg px-8 relative">
+    <h2 class="font-serif text-3xl font-bold mb-3 text-center">Welcome to Tebesa</h2>
+    <p class="text-fg/60 text-center mb-10 max-w-xs">Log in with your Telegram account to continue.</p>
+    <button id="tg-login-btn" type="button" onclick="startTelegramLogin()" class="continue-btn w-full max-w-sm py-5 rounded-2xl text-lg font-bold flex items-center justify-center gap-3"><i class="fa-brands fa-telegram"></i><span>Login with Telegram</span></button>
+    <p id="login-msg" class="text-sm text-fg/60 text-center mt-5 min-h-[1.25rem]" data-no-i18n></p>
   </div>
 
   <div id="language-screen" class="hidden h-full w-full flex-col justify-center items-center premium-bg px-8 relative">
@@ -1890,6 +1919,33 @@ label,.section-label{overflow-wrap:anywhere;line-height:1.3}
   </div>
 </div>
 
+<div id="receipt-sent-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center px-6" role="dialog" aria-modal="true" aria-labelledby="receipt-sent-title">
+  <div class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+  <div class="relative w-full max-w-sm rounded-3xl border border-fg/10 bg-[#211b22] p-7 text-center shadow-2xl">
+    <div class="mx-auto mb-4 w-16 h-16 rounded-full bg-green-500/15 flex items-center justify-center"><i class="fa-solid fa-circle-check text-green-400 text-3xl"></i></div>
+    <h2 id="receipt-sent-title" class="font-serif text-2xl mb-2">Picture sent</h2>
+    <p class="text-sm text-fg/70 leading-relaxed">Please wait a few minutes. We are checking your payment and will activate Gold as soon as it is verified. You will get a notification.</p>
+    <button type="button" onclick="receiptSentDone()" class="mt-6 w-full rounded-2xl py-4 font-bold text-white bg-rose">Back to Home</button>
+  </div>
+</div>
+
+<div id="report-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center px-5" role="dialog" aria-modal="true" aria-labelledby="report-title">
+  <button type="button" class="absolute inset-0 bg-black/75 backdrop-blur-sm" aria-label="Close dialog" onclick="closeReport()"></button>
+  <div class="relative w-full max-w-sm rounded-3xl border border-fg/10 bg-[#211b22] p-6 shadow-2xl">
+    <h2 id="report-title" class="text-center font-serif text-2xl mb-1">Report this person</h2>
+    <p class="text-center text-sm text-fg/60 mb-5">Why are you reporting them? Our team will review it.</p>
+    <div class="grid gap-2">
+      <button type="button" onclick="submitReport('Fake profile')" class="rounded-xl border border-fg/10 bg-fg/5 py-3 font-semibold text-sm">Fake profile</button>
+      <button type="button" onclick="submitReport('Inappropriate photos')" class="rounded-xl border border-fg/10 bg-fg/5 py-3 font-semibold text-sm">Inappropriate photos</button>
+      <button type="button" onclick="submitReport('Harassment or abuse')" class="rounded-xl border border-fg/10 bg-fg/5 py-3 font-semibold text-sm">Harassment or abuse</button>
+      <button type="button" onclick="submitReport('Scam or money request')" class="rounded-xl border border-fg/10 bg-fg/5 py-3 font-semibold text-sm">Scam or money request</button>
+      <button type="button" onclick="submitReport('Under 18')" class="rounded-xl border border-fg/10 bg-fg/5 py-3 font-semibold text-sm">Looks under 18</button>
+      <button type="button" onclick="submitReport('Other')" class="rounded-xl border border-fg/10 bg-fg/5 py-3 font-semibold text-sm">Something else</button>
+    </div>
+    <button type="button" onclick="closeReport()" class="mt-4 w-full rounded-xl py-3 font-semibold text-sm text-fg/60">Cancel</button>
+  </div>
+</div>
+
 <div id="chat-confirm-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center px-5" role="dialog" aria-modal="true" aria-labelledby="chat-confirm-title">
   <button type="button" class="absolute inset-0 bg-black/75 backdrop-blur-sm" aria-label="Close dialog" onclick="closeChatConfirm()"></button>
   <div class="relative w-full max-w-sm rounded-3xl border border-fg/10 bg-[#211b22] p-6 shadow-2xl">
@@ -1916,6 +1972,7 @@ label,.section-label{overflow-wrap:anywhere;line-height:1.3}
       <button type="button" id="chat-menu-trigger" onclick="toggleChatMenu(event)" class="press w-9 h-9 rounded-full flex items-center justify-center"><i class="fa-solid fa-ellipsis-vertical text-cream/70 text-sm"></i></button>
       <div id="chat-menu" class="hidden absolute top-10 right-0 w-48 glass border border-fg/10 rounded-2xl shadow-2xl py-2 z-50">
         <button type="button" onclick="blockCurrentChat()" class="w-full px-4 py-3 text-left text-sm hover:bg-fg/5 flex items-center gap-3 transition-colors"><i class="fa-solid fa-ban text-cream/40"></i><span id="chat-block-label">Block</span></button>
+        <button type="button" onclick="openReport()" class="w-full px-4 py-3 text-left text-sm hover:bg-fg/5 flex items-center gap-3 transition-colors"><i class="fa-solid fa-flag text-cream/40"></i><span>Report</span></button>
         <div class="h-[1px] bg-fg/5 mx-2 my-1"></div>
         <button type="button" onclick="deleteCurrentChat()" class="w-full px-4 py-3 text-left text-sm hover:bg-fg/5 flex items-center gap-3 text-rose transition-colors"><i class="fa-solid fa-trash-can"></i><span>Delete Chat</span></button>
       </div>
@@ -2199,6 +2256,7 @@ async function performDeletion(){
     // really deletes the account on Supabase (Edge Function "tebesa-app", action "delete_account")
     await appApi({ action:'delete_account', confirm:true, reason: chip ? chip.textContent.trim() : '' });
     try{ localStorage.removeItem(tebesaStorageKey()); }catch(e){}
+    try{ localStorage.removeItem(APP_LOGIN_KEY); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}   // app: forget the Telegram login
     $('confirm-modal').classList.add('hidden');
     const success = $('delete-success-screen');
     success.classList.remove('hidden');
@@ -2500,7 +2558,8 @@ function goBackToBioFromPreview(){swapOnboarding('preview-screen','bio-screen');
 function tebesaStorageKey(){
   try {
     const tgUser = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user;
-    return 'tebesa-profile-' + (tgUser && tgUser.id ? String(tgUser.id) : 'this-device');
+    const al = (typeof appLoginUser==='function') ? appLoginUser() : null;
+    return 'tebesa-profile-' + (tgUser && tgUser.id ? String(tgUser.id) : (al ? String(al.id) : 'this-device'));
   } catch(e) { return 'tebesa-profile-this-device'; }
 }
 function saveTebesaProfileLocally(){
@@ -2545,18 +2604,118 @@ const TEBESA_SUPABASE_ANON_KEY = 'sb_publishable_lfGEMbXwTAxXBTATVFnFxA_SItmRBs2
 const TEBESA_API = TEBESA_SUPABASE_URL + '/functions/v1/rapid-processor';
 console.log('Tebesa sync build 2');
 
+/* ---- Android app login (Telegram Login via hosted page) ---- */
+const TEBESA_LOGIN_PAGE = 'https://tebesadating.github.io/tebesa-app./';   // <-- the page you host (see tebesa-login.html)
+const TEBESA_BOT = 'tebesadating_bot';      // bot username (no @)
+const TEBESA_MINIAPP = 'login';             // short name of the login Mini App made with BotFather /newapp
+const APP_LOGIN_KEY = 'tebesa-app-login';
+function appLoginData(){ try { return localStorage.getItem(APP_LOGIN_KEY) || ''; } catch(e){ return ''; } }
+function appLoginUser(){
+  const s = appLoginData(); if(!s) return null;
+  try { const p = new URLSearchParams(s); const id = Number(p.get('id')); return id ? {id, first_name: p.get('first_name')||''} : null; } catch(e){ return null; }
+}
 function tgInitData(){
-  try { return (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || ''; } catch(e){ return ''; }
+  try { return (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || appLoginData(); } catch(e){ return appLoginData(); }
+}
+function showLoginScreen(){
+  const m=$('main-app'); if(m){ m.classList.add('hidden'); m.classList.remove('flex'); }
+  const o=$('onboarding-flow'); if(o) o.classList.remove('hidden');
+  ['splash-screen','language-screen'].forEach(id=>{ const el=$(id); if(el) el.classList.add('hidden'); });
+  const l=$('login-screen'); l.classList.remove('hidden'); l.classList.add('flex');
+  const b=$('tg-login-btn'); if(b) b.disabled=false;
+  const msg=$('login-msg'); if(msg) msg.textContent='';
+  try{
+    const pend=JSON.parse(localStorage.getItem(LOGIN_PENDING_KEY)||'null');
+    if(pend && pend.token && Date.now()-pend.t<600000){ if(msg) msg.textContent='Waiting for Telegram login...'; beginLoginPolling(pend.token, pend.t); }
+  }catch(e){}
+  endSplash();
+}
+const LOGIN_PENDING_KEY = 'tebesa-login-pending';
+let _loginTimer = null, _loginToken = '', _loginStarted = 0, _loginBusy = false;
+function _loginHeaders(){ return {'Content-Type':'application/json','apikey':TEBESA_SUPABASE_ANON_KEY,'Authorization':'Bearer '+TEBESA_SUPABASE_ANON_KEY}; }
+function stopLoginPolling(){
+  clearInterval(_loginTimer); _loginTimer = null;
+  document.removeEventListener('visibilitychange', _loginWake); window.removeEventListener('focus', _loginWake);
+}
+function _loginWake(){ if(!document.hidden && _loginToken) pollLoginOnce(); }   // back from the browser: check at once
+async function pollLoginOnce(){
+  if(_loginBusy || !_loginToken) return;
+  _loginBusy = true;
+  try{
+    if(Date.now() - _loginStarted > 600000){
+      stopLoginPolling(); _loginToken = '';
+      try{ localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}
+      const m=$('login-msg'); if(m) m.textContent = 'Login timed out. Please try again.';
+      return;
+    }
+    const r = await fetch(TEBESA_API, {method:'POST', headers:_loginHeaders(), body: JSON.stringify({action:'app_login_poll', token:_loginToken})});
+    const j = await r.json().catch(()=>({}));
+    if(j.ok && j.initData){
+      stopLoginPolling(); _loginToken = '';
+      try{ localStorage.setItem(APP_LOGIN_KEY, j.initData); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}
+      try{ const B=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser; if(B&&B.close) B.close(); }catch(e){}
+      const l=$('login-screen'); l.classList.add('hidden'); l.classList.remove('flex');
+      bootAfterLogin();
+    }
+  }catch(e){} finally { _loginBusy = false; }
+}
+function beginLoginPolling(token, startedAt){
+  stopLoginPolling();
+  _loginToken = token; _loginStarted = startedAt;
+  _loginTimer = setInterval(pollLoginOnce, 2000);
+  document.addEventListener('visibilitychange', _loginWake); window.addEventListener('focus', _loginWake);
+  pollLoginOnce();
+}
+async function startTelegramLogin(){
+  const msg=$('login-msg');
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const startedAt = Date.now();
+  // Remembered, so the login still completes if the app is closed or reloaded while Telegram is open.
+  try{ localStorage.setItem(LOGIN_PENDING_KEY, JSON.stringify({token:token, t:startedAt})); }catch(e){}
+  msg.textContent = 'Waiting for Telegram login...';
+  const url = 'https://t.me/' + TEBESA_BOT + '/' + TEBESA_MINIAPP + '?startapp=' + token;   // opens the Telegram app
+  beginLoginPolling(token, startedAt);
+  try {
+    const B = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser;
+    if(B && B.open) await B.open({url}); else window.open(url, '_system');
+  } catch(e){ window.open(url, '_blank'); }
+}
+function tebesaLogout(){ try{ localStorage.removeItem(APP_LOGIN_KEY); }catch(e){} location.reload(); }
+async function bootAfterLogin(minSplash){
+  try{
+    let found = await loadProfileFromServer();
+    if(!found) found = restoreTebesaProfileLocally();
+    if(minSplash) await minSplash;
+    if(found) finishApp(); else goToLanguage();
+  }catch(e){
+    console.warn('Tebesa start failed:', e);
+    showLoginScreen();
+    const m=$('login-msg'); if(m) m.textContent='Could not start the app ('+((e&&e.message)||e)+'). Check your internet, then log in again.';
+  }
 }
 async function tebesaApi(body, fn){
   const initData = tgInitData();
   if(!initData) throw new Error('not_in_telegram');
-  const r = await fetch(fn ? TEBESA_SUPABASE_URL + '/functions/v1/' + fn : TEBESA_API, {
-    method:'POST',
-    headers:{'Content-Type':'application/json','apikey':TEBESA_SUPABASE_ANON_KEY,'Authorization':'Bearer '+TEBESA_SUPABASE_ANON_KEY},
-    body: JSON.stringify(Object.assign({initData}, body))
-  });
+  const payload = JSON.stringify(Object.assign({initData}, body));
+  const ctrl = new AbortController();
+  const killer = setTimeout(()=>ctrl.abort(), payload.length > 200000 ? 90000 : 20000);
+  let r;
+  try{
+    r = await fetch(fn ? TEBESA_SUPABASE_URL + '/functions/v1/' + fn : TEBESA_API, {
+      method:'POST', signal: ctrl.signal,
+      headers:{'Content-Type':'application/json','apikey':TEBESA_SUPABASE_ANON_KEY,'Authorization':'Bearer '+TEBESA_SUPABASE_ANON_KEY},
+      body: payload
+    });
+  }catch(e){
+    throw new Error(e && e.name==='AbortError' ? 'timeout' : 'network_error');
+  }finally{ clearTimeout(killer); }
   const j = await r.json().catch(()=>({}));
+  // Only the main function decides that the app login is invalid. The chat and matches functions
+  // do not know app logins yet and must not log the user out.
+  if(!fn && r.status===401 && appLoginData() && !(window.Telegram && Telegram.WebApp && Telegram.WebApp.initData)){
+    try{ localStorage.removeItem(APP_LOGIN_KEY); }catch(e){}
+    showLoginScreen();
+  }
   if(!r.ok) throw new Error(j.error || ('http_'+r.status));
   return j;
 }
@@ -3215,6 +3374,9 @@ function profilePhotos(p){
 }
 function openPersonProfile(p, matched=false, fromPick=false){
   if(!p) return;
+  // Whoever opens the profile (likes list, chat, discover), a person you already matched with
+  // must always get the Message and Unmatch buttons.
+  if(!matched && typeof matchList!=='undefined' && matchList.some(m=>m.id===p.id)) matched = true;
   activePersonProfile = {...p, _matched:matched, _pick:!!fromPick};
   activePersonPhotoIndex = 0;
   renderPersonProfile();
@@ -3338,6 +3500,27 @@ async function confirmChatAction(){
       getChat(id).msgs = []; renderChat(); showToast('Chat deleted'); refreshInbox();
     }
   }catch(e){ showToast('Could not complete that: '+e.message); }
+}
+/* ---- Report a user ---- */
+let _reportTarget = null, _reporting = false;
+function openReport(){
+  if(!currentChat) return;
+  _reportTarget = currentChat;
+  $('chat-menu').classList.add('hidden');
+  $('report-modal').classList.remove('hidden');
+}
+function closeReport(){ $('report-modal').classList.add('hidden'); _reportTarget = null; }
+async function submitReport(reason){
+  if(_reporting || !_reportTarget) return;
+  _reporting = true;
+  const target = _reportTarget;
+  try{
+    await appApi({action:'report', target:target, reason:reason});
+    closeReport();
+    showToast('Report sent. Thank you for keeping Tebesa safe.');
+  }catch(e){
+    showToast('Could not send the report: ' + (e.message || e));
+  }finally{ _reporting = false; }
 }
 function blockCurrentChat(){
   const p = peers[currentChat]; if(!p) return;
@@ -3773,6 +3956,7 @@ function logoutUser(){ openScreen('screen-logout'); }
 function confirmLogout(){
   closeScreen('screen-logout');
   showToast('Logged out');
+  try{ localStorage.removeItem(APP_LOGIN_KEY); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}   // app: forget the Telegram login
   setTimeout(()=>location.reload(),600);
 }
 
@@ -3799,6 +3983,18 @@ async function waitForGold(){
   if(isGold) { closeScreen('screen-payment-final'); closeScreen('screen-payment'); } else showToast('Payment received. Gold will activate in a moment.');
 }
 
+let _receiptTimer = null;
+function showReceiptSent(){
+  $('receipt-sent-modal').classList.remove('hidden');
+  clearTimeout(_receiptTimer);
+  _receiptTimer = setTimeout(receiptSentDone, 6000);
+}
+function receiptSentDone(){
+  clearTimeout(_receiptTimer);
+  $('receipt-sent-modal').classList.add('hidden');
+  ['screen-payment-final','screen-payment','screen-subscription'].forEach(id=>{ const el=$(id); if(el) closeScreen(id); });
+  navigate('home');
+}
 async function submitReceipt(){
   const preview=$('preview-img');
   if(!preview||!preview.src||$('payment-preview').classList.contains('hidden')){ showToast('Please upload your Telebirr payment receipt first.'); return; }
@@ -3807,8 +4003,8 @@ async function submitReceipt(){
     const image=await compressDataUrl(preview.src,1400);
     await appApi({action:'receipt',plan:selectedPlan.id,image});
     pendingReceipt=true; selectMethod('telebirr');
-    showToast('Receipt received. We will verify it shortly.');
     const foot=$('payment-footnote'); if(foot) foot.textContent='Receipt submitted. You will get a notification when Gold is activated.';
+    showReceiptSent();
   }catch(e){
     selectMethod('telebirr');
     if(e.message==='already_pending'){ pendingReceipt=true; selectMethod('telebirr'); showToast('You already have a receipt under review.'); }
@@ -3890,10 +4086,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   try{ if(window.Telegram && Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); } }catch(e){}
   const minSplash = new Promise(r=>setTimeout(r,2500));
   (async()=>{
-    let found = await loadProfileFromServer();
-    if(!found) found = restoreTebesaProfileLocally();
-    await minSplash;
-    if(found) finishApp(); else goToLanguage();
+    if(!tgInitData()){ await minSplash; showLoginScreen(); return; }   // splash -> Login with Telegram
+    await bootAfterLogin(minSplash);
   })();
 });
 
@@ -3968,6 +4162,8 @@ function backTarget(){
   if(shown('admin-panel'))          return () => closeAdmin();
   if(shown('person-unmatch-modal')) return () => closeUnmatchConfirm();
   if(shown('person-profile-modal')) return () => closePersonProfile();
+  if(shown('receipt-sent-modal'))   return () => receiptSentDone();
+  if(shown('report-modal'))         return () => closeReport();
   if(shown('chat-confirm-modal'))   return () => closeChatConfirm();
   if(shown('confirm-modal'))        return () => hideFinalConfirm();
   if(shown('pv-modal'))             return () => closePrivacyModal();
@@ -3988,7 +4184,22 @@ function tebesaGoBack(){
   if(f){ try{ f(); }catch(e){ console.warn('back failed', e); } }
   syncBackButton();
 }
+/* Android system back button: one history entry is kept while a screen/modal is open, so the
+   phone's back button closes the top layer first. On Home there is no entry, so back leaves the app. */
+let _guardOn = false, _ignorePopUntil = 0, _useCapBack = false, _lastExitTap = 0;
+function androidGuardSync(){
+  if(_useCapBack || !window.Capacitor) return;   // only used inside the Android app (never in Telegram or a browser)
+  const need = !!backTarget();
+  if(need && !_guardOn){ history.pushState({tebesaGuard:1}, ''); _guardOn = true; }
+  else if(!need && _guardOn){ _guardOn = false; _ignorePopUntil = Date.now() + 500; history.back(); }
+}
+window.addEventListener('popstate', () => {
+  if(Date.now() < _ignorePopUntil) return;
+  _guardOn = false;
+  tebesaGoBack();
+});
 function syncBackButton(){
+  try{ androidGuardSync(); }catch(e){}
   try{
     const bb = window.Telegram && Telegram.WebApp && Telegram.WebApp.BackButton;
     if(!bb) return;
@@ -3999,6 +4210,20 @@ document.addEventListener('DOMContentLoaded', () => {
   try{
     const bb = window.Telegram && Telegram.WebApp && Telegram.WebApp.BackButton;
     if(bb) bb.onClick(tebesaGoBack);
+  }catch(e){}
+  /* Android app: the phone's back button comes from the Capacitor App plugin. */
+  try{
+    const CapApp = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App;
+    if(CapApp && CapApp.addListener){
+      _useCapBack = true;
+      CapApp.addListener('backButton', () => {
+        if(backTarget()){ tebesaGoBack(); return; }
+        const now = Date.now();
+        if(now - _lastExitTap < 2000){ CapApp.exitApp(); return; }
+        _lastExitTap = now;
+        try{ if(typeof showToast === 'function') showToast('Press back again to exit'); }catch(e){}
+      });
+    }
   }catch(e){}
   let t = null;
   new MutationObserver(() => { clearTimeout(t); t = setTimeout(syncBackButton, 60); })
