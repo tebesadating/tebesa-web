@@ -1,0 +1,29 @@
+name: Build Tailwind CSS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [index.html, tailwind.config.js, input.css]
+
+permissions:
+  contents: write
+
+jobs:
+  css:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build tailwind.css (same Tailwind version the page used from the CDN)
+        run: npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i input.css -o tailwind.css --minify
+      - name: Save it
+        run: |
+          ls -la tailwind.css
+          git config user.name "tebesa-build"
+          git config user.email "build@users.noreply.github.com"
+          git add tailwind.css
+          git commit -m "Build tailwind.css" || { echo "No change"; exit 0; }
+          git push
