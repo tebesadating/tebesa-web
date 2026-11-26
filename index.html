@@ -692,6 +692,11 @@ label,.section-label{overflow-wrap:anywhere;line-height:1.3}
     <h2 class="font-serif text-3xl font-bold mb-3 text-center">Welcome to Tebesa</h2>
     <p class="text-fg/60 text-center mb-10 max-w-xs">Log in with your Telegram account to continue.</p>
     <button id="tg-login-btn" type="button" onclick="startTelegramLogin()" class="continue-btn w-full max-w-sm py-5 rounded-2xl text-lg font-bold flex items-center justify-center gap-3"><i class="fa-brands fa-telegram"></i><span>Login with Telegram</span></button>
+    <div id="login-code-box" class="hidden mt-6 w-full max-w-sm rounded-2xl border border-fg/10 bg-fg/5 p-4 text-center" data-no-i18n>
+      <p class="text-xs text-fg/60 mb-1">Your login code</p>
+      <p id="login-code" class="font-mono text-4xl font-bold tracking-[0.3em]"></p>
+      <p class="text-xs text-fg/50 mt-2">Type this code on the Telegram page. Never share it with anyone who asks you for it.</p>
+    </div>
     <p id="login-msg" class="text-sm text-fg/60 text-center mt-5 min-h-[1.25rem]" data-no-i18n></p>
   </div>
 
@@ -2256,7 +2261,7 @@ async function performDeletion(){
     // really deletes the account on Supabase (Edge Function "tebesa-app", action "delete_account")
     await appApi({ action:'delete_account', confirm:true, reason: chip ? chip.textContent.trim() : '' });
     try{ localStorage.removeItem(tebesaStorageKey()); }catch(e){}
-    try{ localStorage.removeItem(APP_LOGIN_KEY); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}   // app: forget the Telegram login
+    endSessionRemote(false); try{ localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}   // app: cancel and forget the session
     $('confirm-modal').classList.add('hidden');
     const success = $('delete-success-screen');
     success.classList.remove('hidden');
@@ -2608,14 +2613,65 @@ console.log('Tebesa sync build 2');
 const TEBESA_LOGIN_PAGE = 'https://tebesadating.github.io/tebesa-app./';   // <-- the page you host (see tebesa-login.html)
 const TEBESA_BOT = 'tebesadating_bot';      // bot username (no @)
 const TEBESA_MINIAPP = 'login';             // short name of the login Mini App made with BotFather /newapp
-const APP_LOGIN_KEY = 'tebesa-app-login';
-function appLoginData(){ try { return localStorage.getItem(APP_LOGIN_KEY) || ''; } catch(e){ return ''; } }
-function appLoginUser(){
-  const s = appLoginData(); if(!s) return null;
-  try { const p = new URLSearchParams(s); const id = Number(p.get('id')); return id ? {id, first_name: p.get('first_name')||''} : null; } catch(e){ return null; }
-}
+/* Session login (Android app / website): the app keeps only a revocable session token issued by tebesa-gateway,
+   never the signed Telegram login. The Telegram Mini App does not use sessions at all. */
+const TEBESA_GATEWAY = TEBESA_SUPABASE_URL + '/functions/v1/tebesa-gateway';
+const APP_LOGIN_KEY = 'tebesa-session';
+try{ localStorage.removeItem('tebesa-app-login'); }catch(e){}   // old format (signed Telegram login): forget it
+function appSession(){ try { const s = localStorage.getItem(APP_LOGIN_KEY) || ''; return /^[a-f0-9]{64}$/.test(s) ? s : ''; } catch(e){ return ''; } }
+function appLoginData(){ return appSession(); }
+function appLoginUser(){ return appSession() ? {id:'app', first_name:''} : null; }
 function tgInitData(){
-  try { return (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || appLoginData(); } catch(e){ return appLoginData(); }
+  try { return (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || (appSession() ? 'session' : ''); } catch(e){ return appSession() ? 'session' : ''; }
+}
+function sha256Js(msg){   // fallback for WebViews without crypto.subtle (needs a secure page)
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const b=Array.from(new TextEncoder().encode(msg)), l=b.length*8; b.push(0x80);
+  while(b.length%64!==56) b.push(0);
+  for(let i=7;i>=0;i--) b.push(i>3 ? 0 : (l>>>(i*8))&255);
+  let h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const r=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let o=0;o<b.length;o+=64){
+    const w=new Array(64);
+    for(let i=0;i<16;i++) w[i]=(b[o+i*4]<<24)|(b[o+i*4+1]<<16)|(b[o+i*4+2]<<8)|b[o+i*4+3];
+    for(let i=16;i<64;i++){ const s0=r(w[i-15],7)^r(w[i-15],18)^(w[i-15]>>>3), s1=r(w[i-2],17)^r(w[i-2],19)^(w[i-2]>>>10); w[i]=(w[i-16]+s0+w[i-7]+s1)|0; }
+    let [a,bb,c,d,e,f,g,hh]=h;
+    for(let i=0;i<64;i++){
+      const S1=r(e,6)^r(e,11)^r(e,25), ch=(e&f)^(~e&g), t1=(hh+S1+ch+K[i]+w[i])|0;
+      const S0=r(a,2)^r(a,13)^r(a,22), mj=(a&bb)^(a&c)^(bb&c), t2=(S0+mj)|0;
+      hh=g; g=f; f=e; e=(d+t1)|0; d=c; c=bb; bb=a; a=(t1+t2)|0;
+    }
+    h=[(h[0]+a)|0,(h[1]+bb)|0,(h[2]+c)|0,(h[3]+d)|0,(h[4]+e)|0,(h[5]+f)|0,(h[6]+g)|0,(h[7]+hh)|0];
+  }
+  return h.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');
+}
+async function sha256Hex(s){
+  try{
+    if(window.crypto && crypto.subtle){
+      const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+      return Array.from(new Uint8Array(d)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+  }catch(e){}
+  return sha256Js(s);
+}
+/* The 4-digit code shown here must be typed on the Telegram page: it proves the person finishing the login is the
+   person who started it. */
+function loginCodeFor(token){ return String(parseInt(token.slice(0,8),16) % 10000).padStart(4,'0'); }
+function showLoginCode(token){
+  const box=$('login-code-box'), c=$('login-code');
+  if(!box||!c) return;
+  if(token){ c.textContent = loginCodeFor(token); box.classList.remove('hidden'); } else { box.classList.add('hidden'); c.textContent=''; }
+}
+/* Tells the server to cancel this session (best effort), then forgets it on this device. */
+function endSessionRemote(all){
+  const s = appSession();
+  try{ localStorage.removeItem(APP_LOGIN_KEY); }catch(e){}
+  if(!s) return;
+  try{
+    fetch(TEBESA_GATEWAY, {method:'POST', keepalive:true,
+      headers:{'Content-Type':'application/json','apikey':TEBESA_SUPABASE_ANON_KEY,'Authorization':'Bearer '+TEBESA_SUPABASE_ANON_KEY},
+      body: JSON.stringify({action:'session_end', session:s, all: !!all})}).catch(()=>{});
+  }catch(e){}
 }
 function showLoginScreen(){
   const m=$('main-app'); if(m){ m.classList.add('hidden'); m.classList.remove('flex'); }
@@ -2626,7 +2682,7 @@ function showLoginScreen(){
   const msg=$('login-msg'); if(msg) msg.textContent='';
   try{
     const pend=JSON.parse(localStorage.getItem(LOGIN_PENDING_KEY)||'null');
-    if(pend && pend.token && Date.now()-pend.t<600000){ if(msg) msg.textContent='Waiting for Telegram login...'; beginLoginPolling(pend.token, pend.t); }
+    if(pend && pend.verifier && Date.now()-pend.t<600000){ if(msg) msg.textContent='Waiting for Telegram login...'; beginLoginPolling(pend.verifier, pend.t); }
   }catch(e){}
   endSplash();
 }
@@ -2643,44 +2699,47 @@ async function pollLoginOnce(){
   _loginBusy = true;
   try{
     if(Date.now() - _loginStarted > 600000){
-      stopLoginPolling(); _loginToken = '';
+      stopLoginPolling(); _loginToken = ''; showLoginCode('');
       try{ localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}
       const m=$('login-msg'); if(m) m.textContent = 'Login timed out. Please try again.';
       return;
     }
-    const r = await fetch(TEBESA_API, {method:'POST', headers:_loginHeaders(), body: JSON.stringify({action:'app_login_poll', token:_loginToken})});
+    const r = await fetch(TEBESA_GATEWAY, {method:'POST', headers:_loginHeaders(), body: JSON.stringify({action:'login_poll', verifier:_loginToken, device:'app'})});
     const j = await r.json().catch(()=>({}));
-    if(j.ok && j.initData){
-      stopLoginPolling(); _loginToken = '';
-      try{ localStorage.setItem(APP_LOGIN_KEY, j.initData); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}
+    if(j.ok && j.session){
+      stopLoginPolling(); _loginToken = ''; showLoginCode('');
+      try{ localStorage.setItem(APP_LOGIN_KEY, j.session); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}
       try{ const B=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser; if(B&&B.close) B.close(); }catch(e){}
       const l=$('login-screen'); l.classList.add('hidden'); l.classList.remove('flex');
       bootAfterLogin();
     }
   }catch(e){} finally { _loginBusy = false; }
 }
-function beginLoginPolling(token, startedAt){
+/* _loginToken holds the secret "verifier" that never leaves this device; the public token sent to Telegram is derived from it. */
+async function beginLoginPolling(verifier, startedAt){
   stopLoginPolling();
-  _loginToken = token; _loginStarted = startedAt;
+  _loginToken = verifier; _loginStarted = startedAt;
+  try{ showLoginCode((await sha256Hex(verifier)).slice(0,48)); }catch(e){}
   _loginTimer = setInterval(pollLoginOnce, 2000);
   document.addEventListener('visibilitychange', _loginWake); window.addEventListener('focus', _loginWake);
   pollLoginOnce();
 }
 async function startTelegramLogin(){
   const msg=$('login-msg');
-  const token = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const verifier = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const token = (await sha256Hex(verifier)).slice(0,48);
   const startedAt = Date.now();
   // Remembered, so the login still completes if the app is closed or reloaded while Telegram is open.
-  try{ localStorage.setItem(LOGIN_PENDING_KEY, JSON.stringify({token:token, t:startedAt})); }catch(e){}
-  msg.textContent = 'Waiting for Telegram login...';
+  try{ localStorage.setItem(LOGIN_PENDING_KEY, JSON.stringify({verifier:verifier, t:startedAt})); }catch(e){}
+  msg.textContent = 'Open Telegram, then type the code below on that page.';
   const url = 'https://t.me/' + TEBESA_BOT + '/' + TEBESA_MINIAPP + '?startapp=' + token;   // opens the Telegram app
-  beginLoginPolling(token, startedAt);
+  beginLoginPolling(verifier, startedAt);
   try {
     const B = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser;
     if(B && B.open) await B.open({url}); else window.open(url, '_system');
   } catch(e){ window.open(url, '_blank'); }
 }
-function tebesaLogout(){ try{ localStorage.removeItem(APP_LOGIN_KEY); }catch(e){} location.reload(); }
+function tebesaLogout(){ endSessionRemote(false); location.reload(); }
 async function bootAfterLogin(minSplash){
   try{
     let found = await loadProfileFromServer();
@@ -2694,14 +2753,17 @@ async function bootAfterLogin(minSplash){
   }
 }
 async function tebesaApi(body, fn){
-  const initData = tgInitData();
-  if(!initData) throw new Error('not_in_telegram');
-  const payload = JSON.stringify(Object.assign({initData}, body));
+  const tgData = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || '';
+  const sess = tgData ? '' : appSession();
+  if(!tgData && !sess) throw new Error('not_in_telegram');
+  let payload;
+  if(tgData){ payload = JSON.stringify(Object.assign({initData:tgData}, body)); }   // Telegram Mini App: unchanged
+  else { const {action:apiAction, ...rest} = body; payload = JSON.stringify(Object.assign({action:'call', session:sess, fn: fn || TEBESA_APP_FN, api_action: apiAction}, rest)); }
   const ctrl = new AbortController();
   const killer = setTimeout(()=>ctrl.abort(), payload.length > 200000 ? 90000 : 20000);
   let r;
   try{
-    r = await fetch(fn ? TEBESA_SUPABASE_URL + '/functions/v1/' + fn : TEBESA_API, {
+    r = await fetch(tgData ? (fn ? TEBESA_SUPABASE_URL + '/functions/v1/' + fn : TEBESA_API) : TEBESA_GATEWAY, {
       method:'POST', signal: ctrl.signal,
       headers:{'Content-Type':'application/json','apikey':TEBESA_SUPABASE_ANON_KEY,'Authorization':'Bearer '+TEBESA_SUPABASE_ANON_KEY},
       body: payload
@@ -2710,9 +2772,8 @@ async function tebesaApi(body, fn){
     throw new Error(e && e.name==='AbortError' ? 'timeout' : 'network_error');
   }finally{ clearTimeout(killer); }
   const j = await r.json().catch(()=>({}));
-  // Only the main function decides that the app login is invalid. The chat and matches functions
-  // do not know app logins yet and must not log the user out.
-  if(!fn && r.status===401 && appLoginData() && !(window.Telegram && Telegram.WebApp && Telegram.WebApp.initData)){
+  // The gateway answers 401 when the session is revoked, expired or unknown: ask the person to log in again.
+  if(!tgData && r.status===401){
     try{ localStorage.removeItem(APP_LOGIN_KEY); }catch(e){}
     showLoginScreen();
   }
@@ -3989,7 +4050,7 @@ function logoutUser(){ openScreen('screen-logout'); }
 function confirmLogout(){
   closeScreen('screen-logout');
   showToast('Logged out');
-  try{ localStorage.removeItem(APP_LOGIN_KEY); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}   // app: forget the Telegram login
+  endSessionRemote(false); try{ localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}   // app: cancel and forget the session
   setTimeout(()=>location.reload(),600);
 }
 
