@@ -2205,7 +2205,7 @@ function renderBlockedList(){
       '<div class="flex items-center gap-4"><img alt="" class="w-12 h-12 rounded-full object-cover bg-fg/10">' +
       '<div><h3 class="font-bold"></h3><p class="text-[10px] text-fg/40"></p></div></div>' +
       '<button type="button" class="px-4 py-2 rounded-xl bg-rose/10 text-rose text-xs font-bold border border-rose/20">Unblock</button>';
-    if(b.img) row.querySelector('img').src = b.img;
+    if(safeImgUrl(b.img)) row.querySelector('img').src = safeImgUrl(b.img);
     row.querySelector('h3').textContent = b.name;
     const d = new Date(b.date);
     row.querySelector('p').textContent = isNaN(d) ? '' : 'Blocked on ' + d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -4453,7 +4453,7 @@ function adminCard(p){
     '<div class="text-sm mb-2"><b>'+esc(p.name)+'</b> &middot; '+esc(p.plan)+' &middot; '+esc(p.amount)+' '+esc(p.currency)+
     '<span class="text-white/40 block">TG '+esc(p.telegram_id)+' &middot; sent '+esc(new Date(p.at).toLocaleString())+when+'</span>'+
     (p.note ? '<span class="text-white/50 block">Note: '+esc(p.note)+'</span>' : '')+'</div>'+
-    (p.receipt_url ? '<a href="'+esc(p.receipt_url)+'" target="_blank" rel="noopener"><img src="'+esc(p.receipt_url)+'" class="w-full max-h-96 object-contain rounded-xl mb-3"></a>' : '');
+    (safeImgUrl(p.receipt_url) ? '<a href="'+esc(safeImgUrl(p.receipt_url))+'" target="_blank" rel="noopener noreferrer"><img src="'+esc(safeImgUrl(p.receipt_url))+'" class="w-full max-h-96 object-contain rounded-xl mb-3"></a>' : '');
   if (adminTab === 'pending'){
     const row = document.createElement('div'); row.className = 'grid grid-cols-2 gap-2';
     const ok = document.createElement('button'); ok.className='py-3 rounded-xl bg-rose font-bold'; ok.textContent='Approve';
