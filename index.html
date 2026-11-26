@@ -471,6 +471,17 @@ p,h1,h2,h3,h4,label,button{overflow-wrap:break-word}
   html,body{background:rgb(var(--ink))}
   #app{box-shadow:0 0 0 1px rgb(var(--fg) / .06),0 24px 60px rgba(0,0,0,.35)}
 }
+/* Desktop: show the app as a phone-sized card on a branded backdrop (phones and Telegram's narrow window are untouched). */
+@media (min-width:900px) and (min-height:640px){
+  body{background:radial-gradient(1100px 700px at 15% 10%,rgb(var(--rose) / .18),transparent 60%),radial-gradient(900px 600px at 90% 95%,rgb(var(--lilac) / .16),transparent 60%),rgb(var(--ink))}
+  body::before{content:"Tebesa";position:fixed;left:max(4vw,40px);top:50%;transform:translateY(-50%);font:700 clamp(56px,7vw,104px)/1 Fraunces,serif;color:rgb(var(--cream) / .92);letter-spacing:-.02em;pointer-events:none}
+  body::after{content:"Where beautiful Ethiopian hearts meet";position:fixed;left:max(4vw,40px);top:calc(50% + clamp(44px,5vw,76px));font:500 clamp(16px,1.6vw,22px)/1.4 Manrope,sans-serif;color:rgb(var(--cream) / .6);pointer-events:none}
+  #app{--app-h:min(900px,calc(100dvh - 48px));height:var(--app-h)!important;max-height:var(--app-h)!important;margin:24px auto 24px calc(50% - 240px + min(16vw,200px))!important;border-radius:28px;overflow:hidden;box-shadow:0 0 0 1px rgb(var(--fg) / .08),0 30px 80px rgba(0,0,0,.45)}
+}
+@media (min-width:900px) and (max-width:1199px){
+  body::before,body::after{display:none}
+  #app{margin:24px auto!important}
+}
 
 /* Headers: keep the existing look, add notch / Telegram-bar room */
 header.pt-12{padding-top:max(3rem,calc(var(--top-inset) + 1rem))}
