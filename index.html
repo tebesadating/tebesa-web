@@ -882,6 +882,8 @@ html{-webkit-text-size-adjust:100%}
       <p id="login-code" class="font-mono text-4xl font-bold tracking-[0.3em]"></p>
       <p class="text-xs text-fg/50 mt-2">Type this code on the Telegram page. Never share it with anyone who asks you for it.</p>
     </div>
+    <div class="w-full max-w-sm flex items-center gap-3 my-6 text-xs text-fg/40" data-no-i18n><span class="flex-1 h-px bg-fg/10"></span><span>or log in with email</span><span class="flex-1 h-px bg-fg/10"></span></div>
+    <div id="email-login-box" class="w-full max-w-sm" data-no-i18n></div>
     <p id="login-msg" class="text-sm text-fg/60 text-center mt-5 min-h-[1.25rem]" data-no-i18n></p>
   </div>
 
@@ -1745,7 +1747,9 @@ html{-webkit-text-size-adjust:100%}
       </section>
       <section>
         <h4 class="text-xs font-bold uppercase tracking-widest text-fg/40 mb-3 px-2">Account</h4>
-        <div class="bg-fg/5 rounded-3xl overflow-hidden"><div onclick="logoutUser()" class="p-4 flex items-center justify-between list-item-hover cursor-pointer">
+        <div class="bg-fg/5 rounded-3xl overflow-hidden"><div onclick="openScreen('screen-email-link')" class="p-4 flex items-center justify-between list-item-hover cursor-pointer border-b border-fg/5">
+          <div class="flex items-center gap-4"><div class="w-10 h-10 rounded-2xl bg-fg/5 flex items-center justify-center text-fg/40"><i class="fa-solid fa-envelope"></i></div><span class="font-medium" data-no-i18n>Login with email</span></div>
+          <i class="fa-solid fa-chevron-right text-fg/20 text-xs"></i></div><div onclick="logoutUser()" class="p-4 flex items-center justify-between list-item-hover cursor-pointer">
           <div class="flex items-center gap-4"><div class="w-10 h-10 rounded-2xl bg-fg/5 flex items-center justify-center text-fg/40"><i class="fa-solid fa-arrow-right-from-bracket"></i></div><span class="font-medium">Logout</span></div>
           
         </div><div class="h-[1px] bg-fg/5 mx-4"></div><div onclick="openDeleteAccount()" class="p-4 flex items-center justify-between list-item-hover cursor-pointer">
@@ -2186,6 +2190,20 @@ html{-webkit-text-size-adjust:100%}
 </div>
 
 <!-- LOGOUT CONFIRMATION SCREEN -->
+<div id="screen-email-link" class="app-screen no-scrollbar" style="z-index:120">
+  <div class="flex-1 flex items-center justify-center px-6">
+    <div class="w-full max-w-sm space-y-6 text-center" data-no-i18n>
+      <div class="w-20 h-20 mx-auto rounded-[32px] bg-fg/5 border border-fg/10 flex items-center justify-center text-fg/40"><i class="fa-solid fa-envelope text-3xl"></i></div>
+      <div class="space-y-2">
+        <h1 class="font-serif text-3xl font-bold">Login with email</h1>
+        <p class="text-fg/50 text-sm leading-relaxed">Add your email to this account. Then you can log in on any device with a code we send you, without Telegram.</p>
+      </div>
+      <div id="email-link-box" class="text-left"></div>
+      <button type="button" onclick="closeScreen('screen-email-link')" class="w-full py-4 rounded-[24px] font-bold text-fg/40 uppercase tracking-widest text-xs">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="screen-logout" class="app-screen no-scrollbar" style="z-index:120">
   <div class="flex-1 flex items-center justify-center px-6">
     <div class="w-full max-w-sm space-y-12 text-center">
@@ -2924,6 +2942,108 @@ async function startTelegramLogin(){
     if(B && B.open) await B.open({url}); else window.open(url, '_system');
   } catch(e){ window.open(url, '_blank'); }
 }
+/* ---------- Email code login (Supabase Auth) ----------
+   Step 1: Supabase Auth emails a code. Step 2: the person types it; Supabase Auth returns a short-lived access token.
+   Step 3: tebesa-gateway checks that token, opens a normal Tebesa session (or adds the email to the current account). */
+const TEBESA_AUTH = TEBESA_SUPABASE_URL + '/auth/v1';
+function _authHeaders(){ return {'Content-Type':'application/json','apikey':TEBESA_SUPABASE_ANON_KEY}; }
+async function authSendCode(email){
+  try{
+    const r = await fetch(TEBESA_AUTH + '/otp', {method:'POST', headers:_authHeaders(), body: JSON.stringify({email:email, create_user:true})});
+    if(r.ok) return {ok:true};
+    const j = await r.json().catch(()=>({}));
+    const c = String(j.error_code || j.code || '');
+    if(r.status===429 || /rate_limit/.test(c)) return {ok:false, msg:'Please wait a minute before asking for a new code.'};
+    if(r.status===400 && /email/.test(c+String(j.msg||''))) return {ok:false, msg:'Please check the email address.'};
+    return {ok:false, msg:'Could not send the code. Please try again in a moment.'};
+  }catch(e){ return {ok:false, msg:'No internet connection.'}; }
+}
+async function authCheckCode(email, code){
+  try{
+    const r = await fetch(TEBESA_AUTH + '/verify', {method:'POST', headers:_authHeaders(), body: JSON.stringify({type:'email', email:email, token:code})});
+    const j = await r.json().catch(()=>({}));
+    if(r.ok && j.access_token) return {ok:true, token:j.access_token};
+    return {ok:false, msg:'That code is wrong or has expired.'};
+  }catch(e){ return {ok:false, msg:'No internet connection.'}; }
+}
+/* Draws the email form inside `boxId`. onToken(accessToken, email) -> Promise<string|null> (an error text, or null when done). */
+function mountEmailBox(boxId, onToken){
+  const box = $(boxId); if(!box) return;
+  const inp = 'w-full rounded-2xl bg-fg/5 border border-fg/10 px-4 py-4 text-base outline-none focus:border-rose/60';
+  box.innerHTML =
+    '<div data-s="1"><input data-f="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" maxlength="254" class="'+inp+'">'+
+    '<button data-f="send" type="button" class="continue-btn w-full mt-3 py-4 rounded-2xl font-bold">Send me a code</button></div>'+
+    '<div data-s="2" class="hidden"><p class="text-sm text-fg/60 mb-3 text-center">We sent a code to <b data-f="shown"></b>. It can take a minute. Check spam too.</p>'+
+    '<input data-f="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="Code" class="'+inp+' text-center font-mono text-2xl tracking-[0.3em]">'+
+    '<button data-f="check" type="button" class="continue-btn w-full mt-3 py-4 rounded-2xl font-bold">Continue</button>'+
+    '<div class="flex justify-between mt-3 text-xs text-fg/50"><button data-f="back" type="button" class="underline">Use another email</button><button data-f="resend" type="button" class="underline">Send again</button></div></div>'+
+    '<p data-f="msg" class="text-sm text-center mt-3 min-h-[1.25rem] text-fg/60"></p>';
+  const f = n => box.querySelector('[data-f="'+n+'"]'), step = n => box.querySelector('[data-s="'+n+'"]');
+  let email = '', busy = false, cool = 0, timer = null;
+  const say = t => { f('msg').textContent = t || ''; };
+  const show = n => { step(1).classList.toggle('hidden', n!==1); step(2).classList.toggle('hidden', n!==2); say(''); };
+  const tick = () => { f('resend').disabled = cool>0; f('resend').textContent = cool>0 ? 'Send again ('+cool+')' : 'Send again'; };
+  function startCool(){ cool = 60; tick(); clearInterval(timer); timer = setInterval(()=>{ cool--; tick(); if(cool<=0) clearInterval(timer); }, 1000); }
+  async function send(){
+    if(busy) return;
+    const v = (email || f('email').value).trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)){ say('Please enter a valid email address.'); return; }
+    busy = true; f('send').disabled = true; say('Sending…');
+    const r = await authSendCode(v);
+    busy = false; f('send').disabled = false;
+    if(!r.ok){ say(r.msg); return; }
+    email = v; f('shown').textContent = v; show(2); startCool(); f('code').value=''; f('code').focus();
+  }
+  async function check(){
+    if(busy) return;
+    const c = f('code').value.replace(/\s+/g,'');
+    if(!/^\d{6,10}$/.test(c)){ say('Type the code from the email.'); return; }
+    busy = true; f('check').disabled = true; say('Checking…');
+    const r = await authCheckCode(email, c);
+    if(!r.ok){ busy = false; f('check').disabled = false; say(r.msg); return; }
+    const err = await onToken(r.token, email);
+    busy = false; f('check').disabled = false;
+    if(err) say(err);
+  }
+  f('send').addEventListener('click', send);
+  f('email').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); send(); } });
+  f('check').addEventListener('click', check);
+  f('code').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); check(); } });
+  f('resend').addEventListener('click', ()=>{ if(cool<=0) send(); });
+  f('back').addEventListener('click', ()=>{ email=''; show(1); f('email').focus(); });
+}
+async function _gatewayEmail(body){
+  const r = await fetch(TEBESA_GATEWAY, {method:'POST', headers:_loginHeaders(), body: JSON.stringify(body)});
+  return { status:r.status, j: await r.json().catch(()=>({})) };
+}
+/* Login screen: email code -> session. */
+function setupEmailLogin(){
+  mountEmailBox('email-login-box', async (token)=>{
+    const {j} = await _gatewayEmail({action:'email_login', access_token:token, device:'email'});
+    if(!(j.ok && j.session)) return 'Could not log in. Please try again.';
+    try{ localStorage.setItem(APP_LOGIN_KEY, j.session); localStorage.removeItem(LOGIN_PENDING_KEY); }catch(e){}
+    stopLoginPolling(); _loginToken=''; showLoginCode('');
+    const l=$('login-screen'); l.classList.add('hidden'); l.classList.remove('flex');
+    bootAfterLogin();
+    return null;
+  });
+}
+/* Settings: add an email to the account that is logged in right now (Telegram Mini App or app session). */
+function setupEmailLink(){
+  mountEmailBox('email-link-box', async (token, email)=>{
+    const tgData = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || '';
+    const sess = tgData ? '' : appSession();
+    if(!tgData && !sess) return 'Please log in again.';
+    const body = {action:'email_link', access_token:token};
+    if(tgData) body.initData = tgData; else body.session = sess;
+    const {j} = await _gatewayEmail(body);
+    if(j.ok){ showToast('Email added: ' + email); closeScreen('screen-email-link'); return null; }
+    if(j.error==='email_in_use') return 'This email already belongs to another Tebesa account.';
+    if(j.error==='already_linked') return 'This account already has a different email.';
+    return 'Could not add the email. Please try again.';
+  });
+}
+document.addEventListener('DOMContentLoaded', ()=>{ try{ setupEmailLogin(); setupEmailLink(); }catch(e){ console.warn('email setup', e); } });
 function tebesaLogout(){ endSessionRemote(false); location.reload(); }
 async function bootAfterLogin(minSplash){
   try{
